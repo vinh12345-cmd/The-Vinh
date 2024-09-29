@@ -12,6 +12,7 @@ from pathlib import Path
 import ttkbootstrap as tb
 import platform
 import queue
+from PIL import Image, ImageTk
 
 YOUTUBE_URL_REGEX = re.compile(r'^(https?\:\/\/)?(www\.youtube\.com\/watch\?v=[\w-]{11}|youtu\.be\/[\w-]{11})')
 ANSI_ESCAPE = re.compile(r'\x1B[@-_][0-?]*[ -/]*[@-~]')
@@ -78,7 +79,8 @@ class YouTubeDownloaderApp:
             'settings': 'Settings',
             'save': 'Save Settings',
             'cancel_download': 'Cancel Download',
-            'paste': 'Paste'  # Added translation for Paste button
+            'paste': 'Paste',
+            'choose audio format': 'Choose Audio Format:',
         },
         'vi': {
             'welcome': 'Chào mừng bạn đến với Trình tải xuống YouTube',
@@ -98,7 +100,8 @@ class YouTubeDownloaderApp:
             'settings': 'Cài đặt',
             'save': 'Lưu Cài đặt',
             'cancel_download': 'Hủy Tải xuống',
-            'paste': 'Dán'  # Added translation for Paste button
+            'paste': 'Dán',
+            'choose audio format': 'Chọn định dạng âm thanh:',
         }
     }
 
@@ -117,6 +120,7 @@ class YouTubeDownloaderApp:
 
     AUDIO_QUALITY_CHOICES = ['128 kbps', '192 kbps', '320 kbps']
     VIDEO_QUALITY_CHOICES = ['720p', '1080p', '1440p', '2160p (4K)']
+    AUDIO_FORMAT_CHOICES = ['mp3', 'aac', 'wav', 'flac'] 
 
     def __init__(self, root):
         self.root = root
@@ -126,7 +130,7 @@ class YouTubeDownloaderApp:
         self.queue = queue.Queue()
         self.init_ui()
         self.auto_detect_ffmpeg()
-        self.progress_window = None  # Initialize progress window variable
+        self.progress_window = None 
 
     def init_ui(self):
         style = tb.Style(theme=self.settings_manager.theme)
@@ -141,8 +145,19 @@ class YouTubeDownloaderApp:
         nav_frame = ttk.Frame(self.root)
         nav_frame.pack(side=tk.TOP, fill=tk.X)
 
-        self.settings_button = ttk.Button(nav_frame, text=self.translations[self.current_language]['settings'],
-                                          command=self.open_settings_window)
+        try:
+            original_image = Image.open("setting.png")
+            resized_image = original_image.resize((12, 12), Image.LANCZOS) 
+            self.settings_image = ImageTk.PhotoImage(resized_image)
+        except Exception as e:
+            logging.error(f"Failed to load settings image: {str(e)}")
+            self.settings_image = None
+
+        if self.settings_image:
+            self.settings_button = ttk.Button(nav_frame, image=self.settings_image, command=self.open_settings_window)
+        else:
+            self.settings_button = ttk.Button(nav_frame, text=self.translations[self.current_language]['settings'],
+                                              command=self.open_settings_window)
         self.settings_button.pack(side=tk.LEFT, padx=10, pady=10)
 
         self.language_label = ttk.Label(nav_frame, text=self.translations[self.current_language]['choose_language'])
@@ -163,34 +178,38 @@ class YouTubeDownloaderApp:
         self.url_entry = ttk.Entry(url_frame, width=50)
         self.url_entry.pack(side=tk.LEFT, padx=5)
         self.url_entry.bind("<KeyRelease>", lambda event: self.validate_inputs())
-        
-        # Add the Paste button
+
         self.paste_button = ttk.Button(url_frame, text=self.translations[self.current_language]['paste'], command=self.paste_url)
         self.paste_button.pack(side=tk.LEFT, padx=5)
 
+        quality_frame = ttk.Frame(main_frame)
+        quality_frame.pack(fill=tk.X, pady=5)
+        self.audio_quality_label = ttk.Label(quality_frame, text=self.translations[self.current_language]['choose_audio_quality'])
+        self.audio_quality_label.pack(side=tk.LEFT)
+        self.audio_quality_var = tk.StringVar(value=self.AUDIO_QUALITY_CHOICES[1])
+        audio_quality_dropdown = ttk.Combobox(quality_frame, textvariable=self.audio_quality_var, values=self.AUDIO_QUALITY_CHOICES)
+        audio_quality_dropdown.pack(side=tk.LEFT, padx=5)
+
+        self.video_quality_label = ttk.Label(quality_frame, text=self.translations[self.current_language]['choose_video_quality'])
+        self.video_quality_label.pack(side=tk.LEFT, padx=5)
+        self.video_quality_var = tk.StringVar(value=self.VIDEO_QUALITY_CHOICES[1])
+        video_quality_dropdown = ttk.Combobox(quality_frame, textvariable=self.video_quality_var, values=self.VIDEO_QUALITY_CHOICES)
+        video_quality_dropdown.pack(side=tk.LEFT, padx=5)
+
         format_frame = ttk.Frame(main_frame)
         format_frame.pack(fill=tk.X, pady=5)
+
+        self.audio_format_label = ttk.Label(format_frame, text="Choose Audio Format:")
+        self.audio_format_label.pack(side=tk.LEFT, padx=5)
+        self.audio_format_var = tk.StringVar(value=self.AUDIO_FORMAT_CHOICES[0])
+        audio_format_dropdown = ttk.Combobox(format_frame, textvariable=self.audio_format_var, values=self.AUDIO_FORMAT_CHOICES)
+        audio_format_dropdown.pack(side=tk.LEFT, padx=5)
+
         self.format_label = ttk.Label(format_frame, text=self.translations[self.current_language]['choose_format'])
-        self.format_label.pack(side=tk.LEFT)
+        self.format_label.pack(side=tk.LEFT, padx=5)
         self.format_var = tk.StringVar(value='mp4')
         format_dropdown = ttk.Combobox(format_frame, textvariable=self.format_var, values=['mp4', 'avi', 'mkv'])
         format_dropdown.pack(side=tk.LEFT, padx=5)
-
-        audio_quality_frame = ttk.Frame(main_frame)
-        audio_quality_frame.pack(fill=tk.X, pady=5)
-        self.audio_quality_label = ttk.Label(audio_quality_frame, text=self.translations[self.current_language]['choose_audio_quality'])
-        self.audio_quality_label.pack(side=tk.LEFT)
-        self.audio_quality_var = tk.StringVar(value=self.AUDIO_QUALITY_CHOICES[1])
-        audio_quality_dropdown = ttk.Combobox(audio_quality_frame, textvariable=self.audio_quality_var, values=self.AUDIO_QUALITY_CHOICES)
-        audio_quality_dropdown.pack(side=tk.LEFT, padx=5)
-
-        video_quality_frame = ttk.Frame(main_frame)
-        video_quality_frame.pack(fill=tk.X, pady=5)
-        self.video_quality_label = ttk.Label(video_quality_frame, text=self.translations[self.current_language]['choose_video_quality'])
-        self.video_quality_label.pack(side=tk.LEFT)
-        self.video_quality_var = tk.StringVar(value=self.VIDEO_QUALITY_CHOICES[1])
-        video_quality_dropdown = ttk.Combobox(video_quality_frame, textvariable=self.video_quality_var, values=self.VIDEO_QUALITY_CHOICES)
-        video_quality_dropdown.pack(side=tk.LEFT, padx=5)
 
         path_frame = ttk.Frame(main_frame)
         path_frame.pack(fill=tk.X, pady=5)
@@ -234,7 +253,7 @@ class YouTubeDownloaderApp:
     def download_content_async(self, download_type):
         self._stop_event.clear()
         self.cancel_button.config(state=tk.NORMAL)
-        self.show_progress_window()  # Show progress window when download starts
+        self.show_progress_window() 
         threading.Thread(target=self.download_content, args=(download_type,), daemon=True).start()
         self.root.after(100, self.process_queue)
 
@@ -255,6 +274,7 @@ class YouTubeDownloaderApp:
         format_choice = self.format_var.get()
         selected_audio_quality = self.audio_quality_var.get()
         selected_video_quality = self.video_quality_var.get()
+        selected_audio_format = self.audio_format_var.get() 
 
         audio_quality = self.audio_quality_mapping[selected_audio_quality]
         video_quality = self.video_quality_mapping[selected_video_quality]
@@ -273,7 +293,7 @@ class YouTubeDownloaderApp:
             if download_type == 'audio':
                 ydl_opts['postprocessors'] = [{
                     'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
+                    'preferredcodec': selected_audio_format,
                     'preferredquality': audio_quality,
                 }]
 
@@ -329,7 +349,7 @@ class YouTubeDownloaderApp:
         if self.progress_window:
             self.progress_bar['value'] = 100
             self.progress_label.config(text="Download complete!")
-            self.progress_window.after(2000, self.progress_window.destroy)  # Close progress window after 2 seconds
+            self.progress_window.after(500, self.progress_window.destroy)
 
     def show_progress_window(self):
         self.progress_window = tk.Toplevel(self.root)
@@ -364,7 +384,8 @@ class YouTubeDownloaderApp:
         self.browse_button.config(text=self.translations[self.current_language]['browse'])
         self.settings_button.config(text=self.translations[self.current_language]['settings'])
         self.cancel_button.config(text=self.translations[self.current_language]['cancel_download'])
-        self.paste_button.config(text=self.translations[self.current_language]['paste'])  # Update paste button text
+        self.paste_button.config(text=self.translations[self.current_language]['paste'])
+        self.audio_format_label.config(text=self.translations[self.current_language]['choose audio format'])
 
     def browse_folder(self):
         folder_selected = filedialog.askdirectory()
